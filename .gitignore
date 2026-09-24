@@ -1,0 +1,42 @@
+# ── 环境 ──────────────────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.ipynb_checkpoints/
+
+# ── 数据与模型产物：内容绝不进 Git ─────────────────────
+# 大文件走团队共享盘，文件名 + SHA256 记在 artifacts/README.md
+# 注意：必须用 data/* 而不是 data/，否则目录内的 README/.gitkeep 也会被忽略，
+#       新克隆下来就没有目录结构，"raw 只读"等约定也随之丢失。
+data/*
+!data/README.md
+!data/.gitkeep
+!data/*/.gitkeep
+artifacts/*
+!artifacts/README.md
+!artifacts/.gitkeep
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.om
+*.rknn
+*.engine
+*.trt
+
+# ── 运行输出 ─────────────────────────────────────────
+runs/
+outputs/
+logs/
+*.log
+
+# ── 编辑器 / 系统 ────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

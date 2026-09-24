@@ -1,0 +1,23 @@
+# 顶层依赖清单（给人读）
+#
+# ⚠️ torch / torchvision 不在此处安装，必须走 PyTorch 官方索引以获取 CUDA 构建：
+#     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+#   直接从 PyPI 装会拿到 CPU 版（+cpu），GPU 完全用不上。
+#
+# 完整可复现快照见 requirements-lock.txt（pip freeze 生成）。
+
+# 数值与图像
+numpy
+opencv-python
+pillow
+matplotlib
+pyyaml
+tqdm
+
+# 模型导出与推理
+onnx
+onnxruntime
+netron
+
+# 开发
+pytest

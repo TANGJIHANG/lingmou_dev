@@ -1,0 +1,37 @@
+# 统一换行符处理，避免 Windows 与 Linux 之间来回改文件产生无意义的 diff。
+#
+# 背景：本项目在 Windows 上训练，但部署链路在 WSL2 / 国产 Linux 上开发，
+# 最终上板 openEuler / 银河麒麟。不做归一化的话，同一份文件在两边 checkout
+# 会因 CRLF/LF 不同而整体显示为"已修改"。
+
+* text=auto
+
+# 代码与文档统一 LF
+*.py    text eol=lf
+*.md    text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.toml  text eol=lf
+*.json  text eol=lf
+*.sh    text eol=lf
+*.cfg   text eol=lf
+*.txt   text eol=lf
+
+# Windows 脚本保持 CRLF
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+*.cmd   text eol=crlf
+
+# 二进制：不做任何换行转换
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.bmp   binary
+*.tif   binary
+*.tiff  binary
+*.mp4   binary
+*.onnx  binary
+*.om    binary
+*.rknn  binary
+*.pth   binary
+*.pt    binary

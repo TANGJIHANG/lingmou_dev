@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lingmou"
+version = "0.1.0"
+description = "灵眸天衡 · 空天智能解译载荷 —— 国产化端侧智能解译系统"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "opencv-python",
+    "pillow",
+    "matplotlib",
+    "pyyaml",
+    "tqdm",
+    "onnx",
+    "onnxruntime",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
