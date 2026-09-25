@@ -9,11 +9,22 @@
 
 | 脚本 | 作用 | 状态 |
 |---|---|---|
+| `preview_data.py` | 数据集预览：统计 + 带框网格图（D2 验收证据）| ✅ D2 |
 | `train.py` | 训练检测器（读 `configs/train_*.yaml`） | ☐ D3–D4 |
 | `export_onnx.py` | 导出 ONNX | ☐ D5 |
 | `eval.py` | 评测：精度、虚警率、时延 | ☐ D6+ |
 | `infer.py` | 单图/单流推理入口 | ☐ D6 |
 | `infer_bench.py` | 分段耗时打点（解码/预处理/推理/后处理） | ☐ D11 |
+
+## 数据准备类脚本
+
+```powershell
+# 下载数据集（约 126 MB，幂等）——工具放 tools/，因为它是开发环境工具而非产品入口
+.\.venv\Scripts\python.exe tools\fetch_datasets.py
+
+# 出统计与验收图（默认落 artifacts/d2/）
+.\.venv\Scripts\python.exe scripts\preview_data.py
+```
 
 ## 分段耗时打点是重点
 

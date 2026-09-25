@@ -17,6 +17,10 @@ data/*
 !data/README.md
 !data/.gitkeep
 !data/*/.gitkeep
+# DATA_SOURCES.md 是"来源 + 许可 + SHA256"的登记表，本身是文本证据，
+# 必须进 Git —— 只连同目录一起忽略的话，data/README.md 要求的这份记录
+# 就会永远提交不上去（踩过一次）。
+!data/DATA_SOURCES.md
 artifacts/*
 !artifacts/README.md
 !artifacts/.gitkeep

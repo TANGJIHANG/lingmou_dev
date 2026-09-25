@@ -1,0 +1,44 @@
+# D2 数据集配置
+#
+# 为什么路径不写死在代码里：数据不在 Git 里（见 data/README.md），
+# 每个人本地的存放位置可能不同；换机器、换共享盘只需改这里。
+# 同时，评测报告里的每个数字都能追溯到"用哪份配置跑的"。
+#
+# 本文件的类别选择即 roadmap 硬约束"第一版类别数 <=3 类"的落点。
+
+datasets:
+  nwpu_vhr10:
+    title: NWPU VHR-10
+    source_type: optical
+    reader: nwpu                     # 对应 lingmou.io.read_nwpu_vhr10
+    root: data/interim/nwpu_vhr10/NWPU VHR-10 dataset
+    classes: [airplane, ship, vehicle]
+    include_negative: true           # 并入 150 张真背景图
+    # ── D3–D4 训练前必须显式决定的开关 ──────────────────────────
+    # NWPU 650 张正样本在 10 类下每张都有目标；按上面 3 类过滤后，
+    # 实测 420 张（64.6%）被滤空 —— 但这些图画面里**确实有目标**，
+    # 只是属于被我们排除的 7 类。
+    #   false = 当负样本用：保留 800 张，但其中 420 张是"假背景"，属标签噪声
+    #   true  = 丢弃：只剩 230 张有标注正样本 + 150 张真背景，干净但更小
+    # 当前取 false 仅为**如实记录现状**；训练前请对照 docs/decisions.md 重新决策。
+    drop_emptied: false
+    note: >
+      原版 10 类，此处取 3 类子集。选 airplane/ship/vehicle 的理由是 ship 与
+      SSDD 的 SAR 舰船同名，光学/SAR 融合时类别空间天然对齐。
+      代价：3 类只覆盖 230/650 张正样本（35.4%）。
+
+  ssdd:
+    title: SSDD (SAR Ship Detection Dataset)
+    source_type: sar
+    reader: ssdd                     # 对应 lingmou.io.read_ssdd_dota
+    root: data/interim/ssdd/data/SSDD_DOTA
+    splits: [train, test]            # 只用这两个；见下方 warning
+    classes: [ship]
+    note: >
+      标注为 DOTA 八点旋转框，本阶段拍平为外接矩形，原始四点保留在 Box.polygon。
+
+warnings:
+  - >
+    SSDD 的 test_inshore / test_offshore 不是独立划分，而是 test 的子集
+    （46 + 186 = 232 = test 全量）。当训练数据用会造成标签泄漏，
+    因此不在 splits 里。

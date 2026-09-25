@@ -15,11 +15,16 @@
 |---|---|---|
 | **D0** | 建 venv + 装 CUDA 版 torch + 验证 GPU | ✅ `docs/env.md`，`tools/env_check.py` 输出 PASS |
 | **D1** | 仓库骨架、目录分层、runtime 适配层接口 | ✅ `git log`、目录树、本文件 |
-| **D2** | 数据集选型，搭最小可用数据集 | 数据能读能可视化；**第一版类别数 ≤3 类** |
+| **D2** | 数据集选型，搭最小可用数据集 | ✅ 两源接通（光学 NWPU VHR-10 3 类 + SAR SSDD）、`data/DATA_SOURCES.md`、`scripts/preview_data.py` 出图 |
 | **D3–D4** | 训练基线检测器 | 带框可视化图 + 收敛的 loss 曲线 |
 | **D5** | 导出 ONNX | `.onnx` 文件 + Netron 能看到计算图 |
 | **D6** | ONNX Runtime 推理，**逐框与 PyTorch 对齐** | 两侧框坐标差值表（差 >1e-2 即有问题） |
 | **D7** | 收口：README + 演示录屏 | 30 秒录屏 + 一页 README |
+
+> **D2 已完成，但留了两个必须带到 D3 的问题**（详见 `docs/decisions.md`）：
+> ① NWPU 3 类子集只覆盖 230/650 张正样本，被滤空的 420 张**画面里有目标**，
+> 当负样本用会引入标签噪声—— `configs/datasets.yaml` 的 `drop_emptied` 是开关，训练前必须决策；
+> ② NWPU VHR-10 为 CC-BY-NC-4.0（非商业），企业交付前需处置。
 
 ## 硬约束
 

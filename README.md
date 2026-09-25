@@ -23,7 +23,7 @@
 |---|---|---|
 | D0 | 训练环境打通（RTX 5060 / torch 2.14.0+cu130 / sm_120） | ✅ 已完成 |
 | D1 | 仓库骨架、目录分层、runtime 适配层接口 | ✅ 已完成 |
-| D2 | 数据集选型与最小可用数据集 | ⏳ 进行中 |
+| D2 | 数据集选型与最小可用数据集 | ✅ 已完成（2026-09-25） |
 | D3–D4 | 基线检测器训练 | ☐ |
 | D5 | 导出 ONNX | ☐ |
 | D6 | ONNX Runtime 推理 + 与 PyTorch 精度对齐 | ☐ |
@@ -31,6 +31,21 @@
 
 **D1–D7 的验收标准一句话**：
 > 一张图 → 模型出框 → 导出 ONNX → 用 ONNX Runtime 推理 → 框与 PyTorch 结果一致。
+
+## 数据集（D2）
+
+两个源、都跑通了统一接入，来源与许可见 [`data/DATA_SOURCES.md`](data/DATA_SOURCES.md)：
+
+| 源 | 类型 | 规模 | 类别 | 实测标注框 |
+|---|---|---|---|---|
+| NWPU VHR-10 | 光学 | 800 图（650 正 + 150 背景）| 3 类（airplane / ship / vehicle）| 1657 |
+| SSDD | SAR | 1160 图 | 1 类（ship）| **2587**（与官方声明一致）|
+
+> ⚠️ **三项已知代价，别当成没发生**（详见 [`docs/decisions.md`](docs/decisions.md)）：
+> 1. 3 类只覆盖 NWPU **230/650** 张正样本，其余 420 张被滤空；
+>    把它们当负样本会引入**标签噪声**，`configs/datasets.yaml` 的 `drop_emptied` 控制该取舍。
+> 2. NWPU VHR-10 为 **CC-BY-NC-4.0（非商业）**，企业交付前必须处置。
+> 3. **WSL2 尚未安装**，是 D5 的硬前置，需管理员权限 + 重启。
 
 ## 环境
 
@@ -75,8 +90,17 @@ py -3.10 -m venv .venv
 # 3. 验证环境（应输出 PASS 且 arch list 含 sm_120）
 .\.venv\Scripts\python.exe tools\env_check.py
 
-# 3. 基准测试（应插电源 + 电源模式设为"最佳性能"）
+# 4. 基准测试（应插电源 + 电源模式设为"最佳性能"）
 .\.venv\Scripts\python.exe tools\bench.py
+
+# 5. 拉数据集（约 126 MB，幂等；数据不进 Git，见 data/DATA_SOURCES.md）
+.\.venv\Scripts\python.exe tools\fetch_datasets.py
+
+# 6. 出数据集统计与验收图 -> artifacts/d2/
+.\.venv\Scripts\python.exe scripts\preview_data.py
+
+# 7. 跑测试
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
 ## 开发纪律
@@ -95,3 +119,4 @@ py -3.10 -m venv .venv
 | [`docs/env.md`](docs/env.md) | 训练环境清单与基准数据（将来进《测试评测报告》环境章节） |
 | [`docs/decisions.md`](docs/decisions.md) | 技术决策记录：决定 / 理由 / 被放弃的备选 |
 | [`docs/roadmap.md`](docs/roadmap.md) | D0–D7 竖线打通计划与验收标准 |
+| [`data/DATA_SOURCES.md`](data/DATA_SOURCES.md) | 数据来源、许可条款、SHA256 与实测统计（**数据集本体不进 Git**）|
