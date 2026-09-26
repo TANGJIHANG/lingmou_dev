@@ -16,16 +16,19 @@
 | **D0** | 建 venv + 装 CUDA 版 torch + 验证 GPU | ✅ `docs/env.md`，`tools/env_check.py` 输出 PASS |
 | **D1** | 仓库骨架、目录分层、runtime 适配层接口 | ✅ `git log`、目录树、本文件 |
 | **D2** | 数据集选型，搭最小可用数据集 | ✅ 两源接通（光学 NWPU VHR-10 3 类 + SAR SSDD）、`data/DATA_SOURCES.md`、`scripts/preview_data.py` 出图 |
-| **D3–D4** | 训练基线检测器 | 带框可视化图 + 收敛的 loss 曲线 |
+| **D3–D4** | 训练基线检测器 | ✅ 已完成（2026-09-25）：`docs/img/20260925_d3_baseline_loss_curve.png`、`..._predictions.png` |
 | **D5** | 导出 ONNX | `.onnx` 文件 + Netron 能看到计算图 |
 | **D6** | ONNX Runtime 推理，**逐框与 PyTorch 对齐** | 两侧框坐标差值表（差 >1e-2 即有问题） |
 | **D7** | 收口：README + 演示录屏 | 30 秒录屏 + 一页 README |
 
-> **D3–D4 脚本已就绪（2026-09-25），尚未正式开跑**：
-> `scripts/train.py --smoke` 已跑通整条链路（数据 → FCOS → loss → loss 曲线 → 预测对照图），
-> 基线配置见 `configs/train_baseline.yaml`（FP32、FCOS/ResNet50-FPN、COCO 预训练、32.1 M 参数）。
-> 开跑前已定：`drop_emptied: true` → 训练集 380 张（230 正 + 150 真背景）。
-> ⚠️ 引用纪律：NWPU 无官方划分，**我们的 mAP 不能与文献数字直接比**，只作内部对照。
+> **D3–D4 已完成（2026-09-25）**：基线 FCOS/ResNet50-FPN（COCO 预训练，32.1 M 参数），
+> 20 轮实测 11.4 分钟，train loss 2.7300 → **0.7311**、val loss 4.0773 → **0.6278**。
+> 权重与配方登记在 `artifacts/README.md`（含 SHA256）。
+> ⚠️ **两条限定必须与数字一起引用**（详见 `docs/decisions.md`）：
+> ① 验证集的 0.978 召回 / 0.952 精度是**贪心 IoU@0.5**，**不是 mAP**，
+> 且验证集仅 45 张含目标图，置信区间宽；
+> ② 已排查"近似重复场景泄漏"并被证伪（0/76 超阈值），
+> 但整图相关性查不出"同机场不同裁剪"，加之任务本身不难，数字偏高属预期。
 
 > **D2 已完成，但留了两个必须带到 D3 的问题**（详见 `docs/decisions.md`）：
 > ① NWPU 3 类子集只覆盖 230/650 张正样本，被滤空的 420 张**画面里有目标**，

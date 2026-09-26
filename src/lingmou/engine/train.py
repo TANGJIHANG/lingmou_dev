@@ -184,7 +184,7 @@ def train_one_epoch(
 
         if print_freq and (it + 1) % print_freq == 0:
             avg = totals["total"] / count
-            print(f"    epoch {epoch} it {it + 1}/{len(loader)}  loss {avg:.4f}")
+            print(f"    epoch {epoch} it {it + 1}/{len(loader)}  loss {avg:.4f}", flush=True)
 
     # 恢复 base lr，交给 scheduler 在 epoch 末统一调度
     for group, base in zip(optimizer.param_groups, base_lrs):
@@ -252,8 +252,16 @@ def fit(
     *,
     device: torch.device | None = None,
     print_freq: int = 20,
+    history_path: str | Path | None = None,
 ) -> History:
-    """完整训练流程，返回 loss 历史。"""
+    """完整训练流程，返回 loss 历史。
+
+    :param history_path: 若给出，**每轮结束就把历史落盘一次**。
+        为什么需要：训练要跑十几分钟，若只在最后写文件，中途没有任何可观察的进度。
+        本项目实际踩过——后台跑了 4 分钟，日志因管道缓冲一个字都没出来，
+        只能靠 ``nvidia-smi`` 猜它是不是还活着。有了逐轮落盘，随时能看跑到第几轮、
+        loss 降到多少。
+    """
     device = device or resolve_device(config.device)
     model.to(device)
     optimizer = build_optimizer(model, config)
@@ -276,12 +284,15 @@ def fit(
         history.add(epoch, train_loss, val_loss, lr, time.perf_counter() - t0)
         scheduler.step()
 
+        if history_path is not None:
+            history.save(history_path)
+
         if train_loss:
             msg = f"  [epoch {epoch}] train total={train_loss.get('total', float('nan')):.4f}"
             if val_loss:
                 msg += f"  val total={val_loss.get('total', float('nan')):.4f}"
             msg += f"  lr={lr:.5f}  {time.perf_counter() - t0:.1f}s"
-            print(msg)
+            print(msg, flush=True)   # flush：否则重定向到文件时会被缓冲，看不到实时进度
 
     return history
 

@@ -149,10 +149,15 @@ def main(argv: list[str] | None = None) -> int:
           f"（可训练 {trainable/1e6:.1f} M）")
 
     print("\n=== 开始训练 ===")
-    history = fit(model, train_loader, val_loader, config, device=device)
-
     out_dir = PROJECT_ROOT / config.output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+    # 逐轮落盘：训练要跑十几分钟，中途若没有任何可读的进度文件，
+    # 只能靠 nvidia-smi 猜它是不是还活着（本项目实际踩过）
+    history = fit(
+        model, train_loader, val_loader, config, device=device,
+        history_path=out_dir / "history.json",
+    )
+
     ckpt = save_checkpoint(
         model, out_dir / "best.pth", config=config, epoch=config.epochs - 1, history=history
     )
