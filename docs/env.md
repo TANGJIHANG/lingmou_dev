@@ -9,15 +9,15 @@
 |---|---|
 | GPU | NVIDIA GeForce RTX 5060 Laptop GPU，8 GB，计算能力 **sm_120** |
 | GPU 驱动 | 592.01 |
-| CPU | _待填：`wmic cpu get name` 或任务管理器_ |
-| 内存 | _待填_ |
-| 存储 | C 盘可用约 206 GB（创建 venv 时） |
+| CPU | AMD Ryzen 9 8945HX with Radeon Graphics |
+| 内存 | 15.3 GB |
+| 存储 | C 盘可用约 164 GB（2026-09-25 实测；建 venv 时约 206 GB） |
 
 ## 2. 软件
 
 | 项 | 值 |
 |---|---|
-| OS | _待填：Windows 版本_ |
+| OS | Microsoft Windows 11 家庭版 中文版（10.0.26200）|
 | Python | 3.10.11（venv，路径 `.venv/`） |
 | torch | **2.14.0+cu130** |
 | CUDA（torch 构建） | 13.0 |
@@ -65,3 +65,58 @@ GPU 达到 FP32 峰值的约 67%，属 cuBLAS SGEMM 的正常健康水平，无�
 
 本机是**训练环境**，不是部署环境。命题限制的是**端侧推理部署平台**必须 100% 国产化，
 训练阶段使用 NVIDIA GPU 不违反该要求。部署链路在 WSL2 / 国产 Linux 上验证。
+
+---
+
+## 5. 部署链路练习环境（WSL2 / Linux）
+
+> D5 起（ONNX → ONNX Runtime 推理）在 Linux 上练，原因见 `docs/decisions.md`
+> ——**昇腾 CANN 工具链（含 ATC 转换器）仅有 Linux 版本**。
+
+### 5.1 实测环境（2026-09-25）
+
+| 项 | 值 |
+|---|---|
+| Windows 侧 WSL 版本 | **2.7.14.0**（内核 6.18.33.2-microsoft-standard-WSL2，WSLg 1.0.73.2）|
+| 发行版 | **Ubuntu 24.04.5 LTS**（`x86_64`，默认 WSL 版本 2）|
+| Linux Python | 3.12.3 |
+| 虚拟环境 | `~/.venvs/lingmou`（**建在 Linux 文件系统，不在 /mnt/c**）|
+| numpy / onnx | 2.5.3 / 1.23.0 |
+| onnxruntime | **1.30.0** |
+| 可用 providers | `AzureExecutionProvider`, `CPUExecutionProvider` |
+
+一键复现：`wsl -d Ubuntu-24.04 -u root -- bash tools/setup_wsl.sh`
+
+### 5.2 后端冒烟测试结果
+
+`tools/backend_smoke.py` —— hello-world 级验证：一个 `Y = X @ W + b` 的最小 ONNX 图，
+用 numpy 现算参考值（**刻意不依赖 torch**，板子上未必装得动 PyTorch）。
+
+| 环境 | Python | onnxruntime | 最大绝对误差 | 含 NVIDIA 组件 |
+|---|---|---|---|---|
+| Windows（训练机）| 3.10.11 | 1.23.2 | **0.000e+00** | `false` |
+| WSL Ubuntu 24.04 | 3.12.3 | **1.30.0** | **0.000e+00** | `false` |
+
+**这组数字的意义**：
+1. 同一模型在两个 **onnxruntime 版本不同**（1.23.2 / 1.30.0）、
+   **Python 版本不同**（3.10 / 3.12）、**操作系统不同**的环境上得到**逐位一致**的结果，
+   说明该算子的数值路径在这两个版本间稳定。
+2. `has_nvidia_components = false` 是命题**国产化自证**要的字段，
+   将来换 `--providers CANNExecutionProvider` 后此字段仍须为 `false`。
+
+> ⚠️ **WSL 不等于板子**：WSL2 是 `x86_64 / Ubuntu`，板子是 `aarch64 / openEuler + 昇腾`。
+> 上面这张表说明的是"链路能通"，**不能**用来推断板子上也能通。
+> 板子到手后必须用**同一条命令**重跑一次，那份结果才是《国产化适配测试报告》的正式数据。
+
+### 5.3 WSL 网络注意事项（实测）
+
+| 目标 | WSL 内直连 | 说明 |
+|---|---|---|
+| `archive.ubuntu.com` / `security.ubuntu.com` | ✅ 200 | `apt` 可用 |
+| `pypi.org` / `bootstrap.pypa.io` | ✅ 200 | `pip` 可用 |
+| `github.com` | ❌ 超时 | 仅在 `git clone` 时需要 |
+
+Windows 主机挂着本地代理 `127.0.0.1:7897`，WSL 在 **NAT 模式**下访问不到它，
+启动时会提示 *"检测到 localhost 代理配置，但未镜像到 WSL"*。
+**处置见 `docs/decisions.md`（不为此关闭主机代理）**；若确需 WSL 访问 GitHub，
+应改用 `networkingMode=mirrored`，而不是关闭代理。

@@ -69,7 +69,13 @@ class ORTBackend(InferenceBackend):
                 **kwargs,
             )
         except Exception as exc:  # pragma: no cover - 取决于模型
-            raise BackendError(f"加载模型失败：{model_path}") from exc
+            # 必须把底层错误原文带出来。上板时最常见的失败是
+            # "IR version 不受支持" 与 "opset 不受支持"，
+            # 只报一句"加载模型失败"会让排查方向完全跑偏（本项目踩过）。
+            raise BackendError(
+                f"加载模型失败：{model_path}\n"
+                f"  底层错误：{type(exc).__name__}: {exc}"
+            ) from exc
 
         self._model_path = model_path
         self._loaded = True

@@ -45,18 +45,37 @@
 > 1. 3 类只覆盖 NWPU **230/650** 张正样本，其余 420 张被滤空；
 >    把它们当负样本会引入**标签噪声**，`configs/datasets.yaml` 的 `drop_emptied` 控制该取舍。
 > 2. NWPU VHR-10 为 **CC-BY-NC-4.0（非商业）**，企业交付前必须处置。
-> 3. **WSL2 尚未安装**，是 D5 的硬前置，需管理员权限 + 重启。
+> 3. `onnx` 与 `onnxruntime` 的 **IR version 上限不同步**（实测 onnx 1.23 写 IR 14、
+>    ORT 1.23 只支持到 11）——导出侧必须显式压低，否则 D5 的产物加载不了。
 
 ## 环境
 
 本地为**训练环境**，不是部署环境。两者的区别见 [`docs/decisions.md`](docs/decisions.md)。
 
 - **硬件**：NVIDIA GeForce RTX 5060 Laptop GPU（8 GB，sm_120），驱动 592.01
-- **软件**：Windows / Python 3.10.11（venv）/ torch 2.14.0+cu130 / CUDA 13.0
+- **软件**：Windows 11（10.0.26200）/ Python 3.10.11（venv）/ torch 2.14.0+cu130 / CUDA 13.0
 - **详细环境清单与基准数据**：见 [`docs/env.md`](docs/env.md)
 
 > ⚠️ Windows 只用于训练。**部署链路（ONNX 导出后的部分）在 WSL2 / 国产 Linux 上练**——
 > 目标平台是 openEuler / 银河麒麟，且昇腾 CANN 工具链仅有 Linux 版本。
+
+### 部署练习环境（WSL2，已就绪）
+
+**Ubuntu 24.04 LTS / Python 3.12**，一键搭建与验证：
+
+```powershell
+# 一键准备 Linux 侧环境（装 venv + numpy/onnx/onnxruntime，不装 torch）
+wsl -d Ubuntu-24.04 -u root -- bash tools/setup_wsl.sh
+
+# 后端冒烟测试：应输出 PASS 且 has_nvidia_components 为 false
+wsl -d Ubuntu-24.04 -u legion -- /home/legion/.venvs/lingmou/bin/python tools/backend_smoke.py
+```
+
+实测：同一模型在 Windows（ORT 1.23.2）与 WSL Ubuntu 24.04（ORT 1.30.0）上
+**最大绝对误差均为 0.000e+00**，`has_nvidia_components = false`。
+
+> ⚠️ **WSL ≠ 板子**：WSL2 是 `x86_64 / Ubuntu`，板子是 `aarch64 / openEuler + 昇腾`。
+> 上板后必须用**同一条命令**重跑一次，那份结果才是《国产化适配测试报告》的正式数据。
 
 ## 目录结构
 

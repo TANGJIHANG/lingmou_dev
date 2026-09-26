@@ -26,13 +26,20 @@
 > 当负样本用会引入标签噪声—— `configs/datasets.yaml` 的 `drop_emptied` 是开关，训练前必须决策；
 > ② NWPU VHR-10 为 CC-BY-NC-4.0（非商业），企业交付前需处置。
 
+> **D5 的两个前置已提前解除（2026-09-25）**：
+> ① WSL2 + Ubuntu 24.04 已就绪，`tools/setup_wsl.sh` 一键复现；
+> ② ORT CPU 冒烟测试已通过（Windows 与 WSL 双端，误差 0.000e+00）。
+> ⚠️ 导出 ONNX 时**必须显式压低 `ir_version`**（实测 onnx 1.23 写 IR 14，ORT 1.23 只支持到 11），
+> 否则 D5 的产物在 D6 加载不了。
+
 ## 硬约束
 
 1. **D2 数据集：不碰 DOTA 全量**（数十 GB + 格式转换，可吃掉三天）。
 2. **第一版类别数 ≤3 类**。类别多寡不影响链路是否通，只影响你几天能跑通。
-3. **D5–D6 在 WSL2 / Linux 上做**（理由见 `docs/decisions.md`）。
+3. **D5–D6 在 WSL2 / Linux 上做**（理由见 `docs/decisions.md`；环境已就绪，见 `docs/env.md` 第 5 节）。
 4. **不引入 Ultralytics**（AGPL-3.0，交付许可风险）。
 5. **每个阶段都留证据物**：截图、日志、录屏、数据表，注明来源与日期。
+6. **产出的 ONNX 必须显式设置 `ir_version`**，并通过 `tools/backend_smoke.py` 验证可加载。
 
 ## 下一步之后（D8+，答辩前需覆盖）
 
