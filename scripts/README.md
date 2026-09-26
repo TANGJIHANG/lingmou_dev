@@ -30,6 +30,27 @@
 .\.venv\Scripts\python.exe scripts\train.py --epochs 5
 ```
 
+### 消融实验：用命令行覆盖，不要去改 YAML
+
+```powershell
+# 反例（危险）：验证 drop_emptied 的影响
+.\.venv\Scripts\python.exe scripts\train.py --drop-emptied false --output-dir artifacts/ablation_fake_bg
+```
+
+`--drop-emptied` 只在**内存里**覆盖 `configs/datasets.yaml` 的同名项，
+配置文件不动，两次实验的输出目录也不同、不会互相覆盖。
+
+> ⚠️ **不要用 PowerShell 就地改写配置文件**。下面这种写法是本项目实际踩过的坑：
+>
+> ```powershell
+> # 千万不要这样写 —— 会把文件清成 0 字节
+> (Get-Content configs\datasets.yaml) -replace 'true', 'false' | Set-Content configs\datasets.yaml
+> ```
+>
+> 管道里 `Set-Content` **先**打开并截断文件，`Get-Content` **后**才去读，
+> 于是读到空、写回空，配置当场丢失（本项目已发生，靠 `git checkout` 救回）。
+> 要改配置就用编辑器；要跑变体就用上面的 CLI 参数。
+
 产物（默认 `artifacts/train_baseline/`，**不进 Git**，登记见 `artifacts/README.md`）：
 
 | 文件 | 用途 |
@@ -38,6 +59,10 @@
 | `history.json` | 逐 epoch 的 loss **分量**——只看总 loss 无法判断卡在哪一路 |
 | `loss_curve.png` | D3–D4 验收物 |
 | `predictions.png` | 标注（绿细线）vs 预测（红粗线），D3–D4 验收物 |
+
+其它可用覆盖参数：`--epochs` / `--batch-size` / `--device` / `--config` / `--datasets`。
+**训练不是确定性的**（未固定随机种子），重跑同一份配置不会得到同一个 SHA256——
+所以每次正式训练都单独归档，并在 `artifacts/README.md` **另起一行**登记新哈希。
 
 ## 数据准备类脚本
 

@@ -59,6 +59,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--device", help="覆盖配置里的 device（cuda / cpu / auto）")
     ap.add_argument("--batch-size", type=int, help="覆盖配置里的 batch_size")
     ap.add_argument(
+        "--drop-emptied", choices=["true", "false"],
+        help="覆盖数据集配置的 drop_emptied（**消融实验用，不修改配置文件**）",
+    )
+    ap.add_argument(
+        "--output-dir", help="覆盖输出目录（消融实验用，避免覆盖基线产物）",
+    )
+    ap.add_argument(
         "--smoke", action="store_true",
         help="冒烟模式：1 轮、各 3 次迭代，几十秒内验证链路",
     )
@@ -66,14 +73,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return ap.parse_args(argv)
 
 
-def build_samples(config: TrainConfig, datasets_cfg: dict):
-    """按训练配置取出数据集，并校验类别定义两端一致。"""
+def build_samples(config: TrainConfig, datasets_cfg: dict, *, drop_emptied: bool | None = None):
+    """按训练配置取出数据集，并校验类别定义两端一致。
+
+    :param drop_emptied: 若给出，**覆盖** datasets.yaml 里的同名项（仅在内存中覆盖，
+        不写回文件）。做消融实验时用 ``--drop-emptied`` 传进来即可。
+
+        为什么必须做成参数、而不是让使用者去改 YAML：
+        在 PowerShell 里写 ``(Get-Content x.yaml) -replace ... | Set-Content x.yaml``
+        会把文件**清成 0 字节**——管道中 ``Set-Content`` 先截断文件，``Get-Content``
+        才去读，于是读到空、写回空。本项目实际踩过，配置当场丢失。
+        把开关做成 CLI 参数，从根上消除这类事故，顺带让消融实验不必改动受版本控制的文件。
+    """
     if config.dataset not in datasets_cfg["datasets"]:
         raise SystemExit(
             f"数据集 {config.dataset!r} 不在 datasets.yaml 中；"
             f"可选：{sorted(datasets_cfg['datasets'])}"
         )
-    spec = datasets_cfg["datasets"][config.dataset]
+    spec = dict(datasets_cfg["datasets"][config.dataset])   # 拷贝：不污染已加载的配置
     declared = list(spec.get("classes") or [])
 
     # 顺序也重要：类别顺序决定标签序号（从 1 开始），顺序不同则"第 1 类"不是同一个类，
@@ -85,6 +102,8 @@ def build_samples(config: TrainConfig, datasets_cfg: dict):
             f"  train.yaml.classes                        = {list(config.classes)}\n"
             f"两处必须完全一致（含顺序）——顺序决定标签序号。"
         )
+    if drop_emptied is not None:
+        spec["drop_emptied"] = drop_emptied
     return build_dataset(config.dataset, spec, project_root=PROJECT_ROOT)
 
 
@@ -98,11 +117,14 @@ def main(argv: list[str] | None = None) -> int:
         config = replace(config, device=args.device)
     if args.batch_size is not None:
         config = replace(config, batch_size=args.batch_size)
+    if args.output_dir is not None:
+        config = replace(config, output_dir=args.output_dir)
     if args.smoke:
-        config = replace(
-            config, epochs=1, max_train_iters=3, max_val_iters=2,
-            output_dir=config.output_dir.rstrip("/\\") + "_smoke",
-        )
+        # 冒烟结果无意义，默认单独放一个目录；若使用者已显式指定目录，尊重他的选择
+        out = config.output_dir if args.output_dir else config.output_dir.rstrip("/\\") + "_smoke"
+        config = replace(config, epochs=1, max_train_iters=3, max_val_iters=2, output_dir=out)
+
+    drop_emptied = None if args.drop_emptied is None else (args.drop_emptied == "true")
 
     datasets_cfg = load_config(PROJECT_ROOT / args.datasets)
 
@@ -112,10 +134,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  类别      : {config.classes}")
     print(f"  输入尺寸  : min_size={config.min_size} max_size={config.max_size}")
     print(f"  epochs    : {config.epochs}  batch={config.batch_size}  lr={config.lr}")
+    print(f"  输出目录  : {config.output_dir}")
+    if drop_emptied is not None:
+        print(f"  ⚠️ drop_emptied 被命令行覆盖为 {drop_emptied}（配置文件未改动）")
     if args.smoke:
         print("  ⚠️ 冒烟模式：只跑 1 轮 × 3 次迭代，结果无意义，仅验证链路")
 
-    samples = build_samples(config, datasets_cfg)
+    samples = build_samples(config, datasets_cfg, drop_emptied=drop_emptied)
     train_samples, val_samples = split_samples(
         samples, val_ratio=config.val_ratio, seed=config.seed
     )
