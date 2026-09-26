@@ -24,7 +24,7 @@
 | D0 | 训练环境打通（RTX 5060 / torch 2.14.0+cu130 / sm_120） | ✅ 已完成 |
 | D1 | 仓库骨架、目录分层、runtime 适配层接口 | ✅ 已完成 |
 | D2 | 数据集选型与最小可用数据集 | ✅ 已完成（2026-09-25） |
-| D3–D4 | 基线检测器训练 | ☐ |
+| D3–D4 | 基线检测器训练 | ⏳ 脚本就绪，待开跑 |
 | D5 | 导出 ONNX | ☐ |
 | D6 | ONNX Runtime 推理 + 与 PyTorch 精度对齐 | ☐ |
 | D7 | 竖线收口：README + 演示录屏 | ☐ |
@@ -43,10 +43,27 @@
 
 > ⚠️ **三项已知代价，别当成没发生**（详见 [`docs/decisions.md`](docs/decisions.md)）：
 > 1. 3 类只覆盖 NWPU **230/650** 张正样本，其余 420 张被滤空；
->    把它们当负样本会引入**标签噪声**，`configs/datasets.yaml` 的 `drop_emptied` 控制该取舍。
+>    已决策 `drop_emptied: true` **丢弃**它们——那些图画面里有目标，
+>    当背景用等于给检测器灌标签噪声。训练集因此为 **380 张**（230 正 + 150 真背景）。
 > 2. NWPU VHR-10 为 **CC-BY-NC-4.0（非商业）**，企业交付前必须处置。
 > 3. `onnx` 与 `onnxruntime` 的 **IR version 上限不同步**（实测 onnx 1.23 写 IR 14、
 >    ORT 1.23 只支持到 11）——导出侧必须显式压低，否则 D5 的产物加载不了。
+
+## 训练（D3–D4）
+
+```powershell
+# 冒烟：几十秒验证"数据 -> 模型 -> loss -> 出图"整条链路（结果无意义）
+.\.venv\Scripts\python.exe scripts\train.py --smoke
+
+# 正式基线（FP32，配置见 configs/train_baseline.yaml）
+.\.venv\Scripts\python.exe scripts\train.py
+```
+
+- **模型**：FCOS / ResNet50-FPN + COCO 预训练，3 类，**32.1 M 参数**（这是 D8+ 压缩率的分母）
+- **为什么是 FCOS**：无锚框、无 RoIAlign → D6 的"逐框对齐"变量最少、ONNX 导出最干净
+- **产物**（`artifacts/train_baseline/`，不进 Git）：权重、loss 历史、`loss_curve.png`、`predictions.png`
+- ⚠️ **引用纪律**：NWPU 无官方划分，本项目自定固定种子划分，
+  **mAP 不能与文献数字直接比较**，只作内部对照（压缩前后等）
 
 ## 环境
 

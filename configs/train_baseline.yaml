@@ -1,0 +1,40 @@
+# 基线训练配置 —— D3–D4 竖线用
+#
+# 这是 **FP32 基线**：不量化、不剪枝、不蒸馏、不做任何加速。
+# 理由（docs/decisions.md 第 1 条开发纪律）：
+#   没有 FP32 基线，"压缩率 80%""精度掉 5pp"这些指标就没有参照物。
+# 任何"优化后"的结果都必须与本文件跑出的数字对比。
+#
+# 每个字段改动都会影响可复现性 —— 改动请记进 docs/decisions.md。
+
+train:
+  # ── 数据 ────────────────────────────────────────────────
+  dataset: nwpu_vhr10            # 对应 configs/datasets.yaml 的键
+  classes: [airplane, ship, vehicle]   # 必须与 datasets.yaml 中该数据集的 classes 一致
+  val_ratio: 0.2                 # NWPU 无官方划分，由本项目自定（见 decisions.md）
+  seed: 20260925                 # 固定种子：换种子 = 换验证集 = 数字不可比
+  num_workers: 0                 # Windows 上多 worker 的启动开销大于收益
+
+  # ── 模型 ────────────────────────────────────────────────
+  detector: fcos                 # fcos / retinanet / fasterrcnn
+  pretrained: true               # 仅 230 张正样本，从零训练不可能收敛
+  min_size: 600                  # 输入短边。torchvision 默认 800/1333 偏重
+  max_size: 800                  # 一旦定下不要中途改，否则前后实验不可比
+                                 # 该值同时决定 D5 导出 ONNX 时的输入规格
+
+  # ── 优化 ────────────────────────────────────────────────
+  epochs: 20
+  batch_size: 4                  # 检测任务每张图尺寸不同，batch 不宜大
+  lr: 0.005                      # SGD；torchvision 参考实现 bs=16 用 0.02
+  momentum: 0.9
+  weight_decay: 0.0005
+  lr_milestones: [12, 18]
+  lr_gamma: 0.1
+  warmup_iters: 200              # 前 200 次迭代线性 warmup，防止打坏预训练特征
+  clip_grad_norm: 10.0           # 检测任务早期 loss 易炸
+
+  # ── 运行 ────────────────────────────────────────────────
+  device: auto                   # auto / cuda / cpu
+  output_dir: artifacts/train_baseline
+  max_train_iters: null          # 冒烟时设成 5 即可几十秒验证链路
+  max_val_iters: null

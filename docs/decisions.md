@@ -288,6 +288,106 @@
 
 ---
 
+## 2026-09-25 · `drop_emptied` 定为 true：宁少勿脏
+
+- **决定**：NWPU VHR-10 在 3 类子集下，**丢弃**"被类别过滤滤空"的 420 张图
+  （``configs/datasets.yaml`` 的 ``drop_emptied: true``）。
+- **理由**：这 420 张图**画面里确实有目标**，只是属于被排除的 7 类。
+  把它们当负样本训练，等于**教检测器压制真实存在的物体**——
+  这不是"数据少一点"，而是**标签本身就是错的**。
+  数据集规模的实际对比（实测）：
+
+  | `drop_emptied` | 训练可用图 | 其中"假背景" |
+  |---|---|---|
+  | `false` | 800 | **420（含未标注目标）** |
+  | **`true`（选定）** | **380**（230 正 + 150 真背景）| 0 |
+
+  划分后实测：train 304 张（185 正 / 119 背景）、val 76 张（45 正 / 31 背景）。
+- **代价（必须记账）**：训练集从 800 降到 380，且正负不平衡（230:150）。
+  后续若精度不达标，**第一个要回来检查的就是这个取舍**——
+  届时正确的做法是扩大数据集或换许可更干净的数据，而不是把"假背景"加回来。
+- **备选与放弃原因**：保留假背景换更大数据量——否决，理由如上。
+
+---
+
+## 2026-09-25 · 基线检测器选 FCOS + ResNet50-FPN（COCO 预训练）
+
+- **决定**：D3–D4 基线用 ``torchvision`` 的 **FCOS / ResNet50-FPN**，
+  加载 COCO 预训练权重、替换检测头为 3 类。
+- **理由**：
+  1. **无锚框**：后处理只有"解码 + NMS"，没有 anchor 尺寸/长宽比这类需要解释的
+     魔法数字。D6 要求"逐框与 PyTorch 对齐"，后处理越简单，
+     两侧不一致的来源就越少——差异只可能来自模型本身。
+  2. **无 RoIAlign / 两阶段结构**：Faster R-CNN 的 RoIAlign 与 RPN 在 ONNX 导出
+     和国产芯片算子支持上都是已知难点。FCOS 是单阶段纯卷积，算子面窄得多。
+  3. **许可干净**：torchvision 是 BSD-3，满足"不引入 Ultralytics（AGPL-3.0）"的硬约束。
+  4. **必须用预训练**：3 类子集只有 230 张正样本，从零训练不可能收敛。
+  实测模型规模：**32.1 M 参数**（可训练 31.8 M）——这是 D8+ 压缩率的**分母**。
+- **已知部署风险（留给 D5 验证）**：FCOS 检测头使用 ``GroupNorm``。
+  部分推理后端对 GroupNorm 的支持不如 BatchNorm 普遍，**昇腾 CANN 上的算子覆盖必须实测**。
+  若不支持，退路是：① 导出前融合/替换 GroupNorm；② 换 RetinaNet（头是 Conv+ReLU，
+  本仓库 ``engine/model.py`` 已支持切换）。
+  这正是"为部署而设计"的落点，不是杞人忧天。
+- **备选与放弃原因**：
+  - **Faster R-CNN**：精度通常更好，但两阶段 + RoIAlign 对 D5/D6 是额外风险。保留为候选。
+  - **RetinaNet**：算子最保守（头是 Conv+ReLU），若 CANN 不支持 GroupNorm 就切它。
+  - **SSD / SSDLite**：最轻，但 torchvision 的 SSD 前向里后处理耦合较深，导出更麻烦。
+  - **自研网络**：可控性最高，但 D3–D4 的目标是打通链路而非刷精度，不划算。
+
+---
+
+## 2026-09-25 · `num_classes` 口径：torchvision 要"含背景"，且它自己的文档自相矛盾
+
+- **决定**：``build_detector(name, num_classes)`` 的 ``num_classes`` 一律指
+  **前景类别数**，由本函数在内部 ``+1`` 转成 torchvision 要的含背景口径；
+  调用方不要自己加。
+- **理由（带实测报错）**：本项目实际踩到，症状极具误导性：
+
+  ```
+  CUDA error: device-side assert triggered
+  aten/src/ATen/native/cuda/IndexKernel.cu:111:
+      Assertion `-sizes[i] <= index && index < sizes[i]` failed
+  # 报错栈指向 fcos.py:98  generalized_box_iou_loss(pred_boxes[foreground_mask], ...)
+  ```
+
+  报错位置（GIoU loss）**离真正原因很远**。真因在 fcos.py:90::
+
+      gt_classes_targets = torch.zeros_like(cls_logits)   # 最后一维 = num_classes
+      gt_classes_targets[foreground_mask, gt_classes[foreground_mask]] = 1.0
+
+  FCOS 把**标签值直接当作分类头最后一维的下标**。标签是 1/2/3，
+  而 ``num_classes`` 传了 3 → ``[..., 3]`` 在长度为 3 的维度上越界。
+
+  而 torchvision 的两处 docstring **互相矛盾**，正是这个坑难查的原因：
+
+  | 位置 | 原文 | 含义 |
+  |---|---|---|
+  | ``fcos_resnet50_fpn`` | "number of output classes of the model (**including the background**)" | 含背景 |
+  | ``FCOSClassificationHead`` | "number of classes to be predicted" | 不提背景 |
+
+  正确口径是**含背景**（COCO 用 91 = 80 + 1）。本仓库改为在
+  ``build_detector`` 内部统一 ``+1``，并用**真实前向**测试钉死
+  （``tests/test_engine.py::test_detector_forward_accepts_labels_starting_at_one``）。
+- **备选与放弃原因**：让每个调用点自己 ``+1``——否决，等于每个调用点都有一次错的机会。
+
+---
+
+## 2026-09-25 · NWPU VHR-10 无官方划分，本项目自定固定种子划分
+
+- **决定**：用 ``split_samples(val_ratio=0.2, seed=20260925)`` 划分，种子写进配置文件。
+- **理由**：
+  1. NWPU VHR-10 **没有官方 train/test 划分**，必须自定；
+  2. 用固定种子而非每次随机洗牌：否则每次的验证集都不同，
+     `docs/decisions.md` 要求的"消融实验可对照"就无从谈起；
+  3. 划分前按 ``image_id`` 排序，使划分**与输入顺序无关**
+     （样本从多源汇总时顺序可能不稳定）。该性质已有测试覆盖。
+- **⚠️ 由此产生的一条硬性引用纪律**：**我们的 mAP 不能与文献数字直接比较**——
+  划分不同、训练集大小不同、类别数不同。本项目的数字只能用于**内部对照**
+  （如压缩前后、不同骨干之间）。报告里引用时必须写明这一点。
+- **备选与放弃原因**：随机划分（不固定种子）——否决，不可复现即不可信。
+
+---
+
 ## 模板（后续条目复制此段）
 
 ```markdown

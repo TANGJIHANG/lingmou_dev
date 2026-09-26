@@ -21,6 +21,12 @@
 | **D6** | ONNX Runtime 推理，**逐框与 PyTorch 对齐** | 两侧框坐标差值表（差 >1e-2 即有问题） |
 | **D7** | 收口：README + 演示录屏 | 30 秒录屏 + 一页 README |
 
+> **D3–D4 脚本已就绪（2026-09-25），尚未正式开跑**：
+> `scripts/train.py --smoke` 已跑通整条链路（数据 → FCOS → loss → loss 曲线 → 预测对照图），
+> 基线配置见 `configs/train_baseline.yaml`（FP32、FCOS/ResNet50-FPN、COCO 预训练、32.1 M 参数）。
+> 开跑前已定：`drop_emptied: true` → 训练集 380 张（230 正 + 150 真背景）。
+> ⚠️ 引用纪律：NWPU 无官方划分，**我们的 mAP 不能与文献数字直接比**，只作内部对照。
+
 > **D2 已完成，但留了两个必须带到 D3 的问题**（详见 `docs/decisions.md`）：
 > ① NWPU 3 类子集只覆盖 230/650 张正样本，被滤空的 420 张**画面里有目标**，
 > 当负样本用会引入标签噪声—— `configs/datasets.yaml` 的 `drop_emptied` 是开关，训练前必须决策；

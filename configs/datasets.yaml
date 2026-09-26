@@ -14,14 +14,17 @@ datasets:
     root: data/interim/nwpu_vhr10/NWPU VHR-10 dataset
     classes: [airplane, ship, vehicle]
     include_negative: true           # 并入 150 张真背景图
-    # ── D3–D4 训练前必须显式决定的开关 ──────────────────────────
+    # ── 已决策：true（2026-09-25）────────────────────────────────
     # NWPU 650 张正样本在 10 类下每张都有目标；按上面 3 类过滤后，
     # 实测 420 张（64.6%）被滤空 —— 但这些图画面里**确实有目标**，
     # 只是属于被我们排除的 7 类。
     #   false = 当负样本用：保留 800 张，但其中 420 张是"假背景"，属标签噪声
     #   true  = 丢弃：只剩 230 张有标注正样本 + 150 张真背景，干净但更小
-    # 当前取 false 仅为**如实记录现状**；训练前请对照 docs/decisions.md 重新决策。
-    drop_emptied: false
+    # 选定 true：宁可数据少，也不要把未标注目标当背景喂给检测器
+    # （那等于教它压制真实存在的物体）。
+    # 代价：训练集从 800 张降到 380 张，且正负不平衡（230:150）。
+    # 详见 docs/decisions.md。
+    drop_emptied: true
     note: >
       原版 10 类，此处取 3 类子集。选 airplane/ship/vehicle 的理由是 ship 与
       SSDD 的 SAR 舰船同名，光学/SAR 融合时类别空间天然对齐。
