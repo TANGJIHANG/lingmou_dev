@@ -12,7 +12,7 @@
 | `preview_data.py` | 数据集预览：统计 + 带框网格图（D2 验收证据）| ✅ D2 |
 | `train.py` | 训练检测器（读 `configs/train_*.yaml`） | ✅ D3–D4 完成 |
 | `export_onnx.py` | 导出 ONNX | ✅ D5 |
-| `eval.py` | 评测：精度、虚警率、时延 | ☐ D6+ |
+| `eval.py` | 评测：召回/精度/虚警 + 两组对照（内置**污染核查**）| ✅ D3–D4 消融 / D6 基础；mAP 待补 |
 | `infer.py` | 单图/单流推理入口 | ☐ D6 |
 | `infer_bench.py` | 分段耗时打点（解码/预处理/推理/后处理） | ☐ D11 |
 
