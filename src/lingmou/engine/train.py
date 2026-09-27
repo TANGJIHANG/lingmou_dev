@@ -19,7 +19,7 @@ import json
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 import torch
 import torch.nn as nn
@@ -298,15 +298,32 @@ def fit(
 
 
 def save_checkpoint(
-    model: nn.Module, path: str | Path, *, config: TrainConfig, epoch: int, history: History
+    model: nn.Module,
+    path: str | Path,
+    *,
+    config: TrainConfig,
+    epoch: int,
+    history: History,
+    dataset_spec: Mapping[str, Any] | None = None,
 ) -> Path:
-    """保存权重。**权重不进 Git**（见 .gitignore 的 ``*.pth``），登记在 artifacts/README.md。"""
+    """保存权重。**权重不进 Git**（见 .gitignore 的 ``*.pth``），登记在 artifacts/README.md。
+
+    :param dataset_spec: **训练时实际生效的数据集规格**（含 ``drop_emptied`` /
+        ``include_negative`` / ``classes`` 等）。
+
+        为什么必须存：``TrainConfig`` 里没有这些字段（它们属 ``configs/datasets.yaml``），
+        而消融实验恰恰是**只改数据集规格、不改训练超参**。
+        不记录的话，事后拿到一个 ``.pth`` 就**无法判断它到底用哪种数据训的**——
+        本项目实际发生过：做消融对照时只能靠目录名去猜哪个是"干净组"。
+        靠命名约定推断实验分组，是不能写进报告的追溯方式。
+    """
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
             "model_state": model.state_dict(),
             "config": asdict(config),
+            "dataset_spec": dict(dataset_spec) if dataset_spec is not None else None,
             "epoch": epoch,
             "history": history.to_dict(),
         },

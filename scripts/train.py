@@ -104,7 +104,9 @@ def build_samples(config: TrainConfig, datasets_cfg: dict, *, drop_emptied: bool
         )
     if drop_emptied is not None:
         spec["drop_emptied"] = drop_emptied
-    return build_dataset(config.dataset, spec, project_root=PROJECT_ROOT)
+    # 连同"实际生效的规格"一起返回，供 save_checkpoint 记进权重。
+    # 否则消融实验产出的 .pth 事后无法自证用了哪份数据（只能靠目录名猜）。
+    return build_dataset(config.dataset, spec, project_root=PROJECT_ROOT), spec
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -140,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.smoke:
         print("  ⚠️ 冒烟模式：只跑 1 轮 × 3 次迭代，结果无意义，仅验证链路")
 
-    samples = build_samples(config, datasets_cfg, drop_emptied=drop_emptied)
+    samples, dataset_spec = build_samples(config, datasets_cfg, drop_emptied=drop_emptied)
     train_samples, val_samples = split_samples(
         samples, val_ratio=config.val_ratio, seed=config.seed
     )
@@ -184,7 +186,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     ckpt = save_checkpoint(
-        model, out_dir / "best.pth", config=config, epoch=config.epochs - 1, history=history
+        model, out_dir / "best.pth", config=config, epoch=config.epochs - 1,
+        history=history, dataset_spec=dataset_spec,
     )
     hist_path = history.save(out_dir / "history.json")
     print(f"\n权重     -> {ckpt.relative_to(PROJECT_ROOT)}")

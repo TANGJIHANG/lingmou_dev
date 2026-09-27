@@ -46,6 +46,12 @@ from lingmou.engine.export import (
     export_onnx,
     inspect_onnx,
 )
+from lingmou.engine.evaluate import (
+    EvalResult,
+    evaluate,
+    format_results_table,
+    iou_xyxy,
+)
 from lingmou.engine.infer import (
     draw_gt_and_predictions,
     predict,
@@ -98,4 +104,9 @@ __all__ = [
     "inspect_onnx",
     "ExportSpec",
     "DetectorRawOutput",
+    # 评测
+    "evaluate",
+    "EvalResult",
+    "format_results_table",
+    "iou_xyxy",
 ]

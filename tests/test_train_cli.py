@@ -72,7 +72,7 @@ def datasets_cfg(mini_nwpu: Path) -> dict:
 def test_no_override_uses_config_value(datasets_cfg: dict) -> None:
     mod = _load_train_module()
     cfg = TrainConfig(classes=["airplane", "ship", "vehicle"])
-    samples = mod.build_samples(cfg, datasets_cfg)
+    samples, _ = mod.build_samples(cfg, datasets_cfg)
     ids = [s.image_id for s in samples]
     # drop_emptied=True -> 被 harbor 滤空的 002 应当被丢弃
     assert "nwpu/positive/002" not in ids
@@ -83,10 +83,23 @@ def test_no_override_uses_config_value(datasets_cfg: dict) -> None:
 def test_override_to_false_keeps_emptied_images(datasets_cfg: dict) -> None:
     mod = _load_train_module()
     cfg = TrainConfig(classes=["airplane", "ship", "vehicle"])
-    samples = mod.build_samples(cfg, datasets_cfg, drop_emptied=False)
+    samples, _ = mod.build_samples(cfg, datasets_cfg, drop_emptied=False)
     ids = [s.image_id for s in samples]
     assert "nwpu/positive/002" in ids       # 被滤空但保留，作为"假背景"
     assert len(samples) == 3
+
+
+def test_build_samples_returns_effective_spec(datasets_cfg: dict) -> None:
+    """必须把"实际生效的数据集规格"交出来，供写进权重做追溯。
+
+    否则消融实验产出的 .pth 事后无法自证用了哪份数据，只能靠目录名猜。
+    """
+    mod = _load_train_module()
+    cfg = TrainConfig(classes=["airplane", "ship", "vehicle"])
+    _, spec = mod.build_samples(cfg, datasets_cfg, drop_emptied=False)
+    assert spec["drop_emptied"] is False
+    # 同时确认没回头污染已加载的配置
+    assert datasets_cfg["datasets"]["nwpu_vhr10"]["drop_emptied"] is True
 
 
 def test_override_does_not_mutate_loaded_config(datasets_cfg: dict) -> None:
