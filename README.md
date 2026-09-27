@@ -98,7 +98,8 @@
 | IR / opset | **IR 8** / opset 17（IR 显式压低，见下）|
 | 图合法性 | `onnx.checker.check_model(full_check=True)` **通过** |
 | onnxruntime 加载 | 1.23.2 可加载 |
-| 动态 H/W | **64×64 ~ 600×800 全区间**与 PyTorch 一致，最大绝对差 **8.58e-06** |
+| 动态 H/W | **32×32 ~ 600×800 全区间**与 PyTorch 一致，最大绝对差 **8.583e-06**；误差不随尺寸缩小而增大 |
+| 可复现性 | **导出字节级可复现**（两次导出 SHA256 相同）；对照之下**训练不可复现** |
 
 看计算图：`netron artifacts\model.onnx`（或 https://netron.app）。
 

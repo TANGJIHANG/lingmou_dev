@@ -62,8 +62,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="导出定尺寸图（如 600x800）；默认导出动态 H/W",
     )
     ap.add_argument(
-        "--verify-sizes", nargs="*", default=["600x800", "525x800", "448x640", "300x400"],
-        help="用这些尺寸做 PyTorch vs ORT 的数值一致性检查",
+        "--verify-sizes", nargs="*",
+        # 默认覆盖 3 个数量级：典型检测尺寸 -> 训练 min_size 附近 -> 架构下限附近。
+        # 之所以把 32x32 也放进来：docs/decisions.md 里记着"32x32 ~ 600x800 全区间一致"
+        # 这个结论，而结论必须能用本仓库的一条命令复现 —— 不能只活在某人的临时脚本里。
+        default=["600x800", "448x640", "192x256", "128x128", "64x64", "32x32"],
+        help="用这些尺寸做 PyTorch vs ORT 的数值一致性检查（默认跨 3 个数量级）",
     )
     return ap.parse_args(argv)
 
@@ -74,6 +78,26 @@ def _parse_hw(text: str) -> tuple[int, int]:
         return int(h), int(w)
     except Exception as exc:
         raise SystemExit(f"尺寸格式应为 HxW，例如 600x800；收到 {text!r}") from exc
+
+
+#: 数值比对用的探针输入种子。
+#:
+#: 为什么必须固定：首版用裸 ``torch.rand()`` 生成探针，**每次运行输入都不同**，
+#: 于是"最大绝对差"这一列会逐次漂移（实测 600x800 在 8.58e-06 ~ 1.05e-05 之间浮动）。
+#: 结论虽然不变，但**文档里写下的具体数字就无法复现** —— 违反本项目
+#: "所有指标都要有口径"的纪律。固定种子后，本表可逐位复现。
+PROBE_SEED = 20260925
+
+
+def _probe_input(h: int, w: int) -> "torch.Tensor":
+    """生成确定性的探针输入。
+
+    每个尺寸用**独立**的种子（与 h/w 绑定），而不是全局 seed 后顺序消耗：
+    这样增删 ``--verify-sizes`` 里的某一项，**不会改变其它行的数字**，
+    表与表之间才能逐行对照。
+    """
+    gen = torch.Generator().manual_seed(PROBE_SEED + h * 100003 + w)
+    return torch.rand(1, 3, h, w, generator=gen)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -147,11 +171,12 @@ def main(argv: list[str] | None = None) -> int:
     # ── 验收 3：与 PyTorch 原始输出的数值一致性 ────────────────
     # 这是 D6「逐框对齐」的前置：图本身先对上，后处理才谈得上对上。
     print("\n=== 验收：PyTorch vs ORT 原始输出一致性 ===")
+    print(f"  （探针输入按固定种子生成，故本表数字可精确复现；seed={PROBE_SEED}）")
     wrapper = DetectorRawOutput(model).eval()
     worst = 0.0
     for text in args.verify_sizes:
         vh, vw = _parse_hw(text)
-        x = torch.rand(1, 3, vh, vw)
+        x = _probe_input(vh, vw)
         with torch.no_grad():
             torch_out = wrapper(x)
         ort_out = sess.run(None, {"images": x.numpy()})
