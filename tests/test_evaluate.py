@@ -50,10 +50,23 @@ def test_iou_degenerate_box_is_zero() -> None:
 
 def test_eval_result_metrics() -> None:
     r = EvalResult(label="m", checkpoint="", score_threshold=0.5, iou_threshold=0.5,
-                   n_gt=100, n_pred_pos=80, n_matched=70, n_pred_bg=6, n_bg_images=30)
+                   n_gt=100, n_pred_pos=80, n_matched=70, n_pred_bg=6, n_bg_images=30,
+                   n_bg_images_with_fp=3)
     assert r.recall == pytest.approx(0.7)
     assert r.precision == pytest.approx(70 / 80)
     assert r.bg_fp_per_image == pytest.approx(0.2)
+    assert r.bg_fp_image_rate == pytest.approx(0.1)
+
+
+def test_bg_fp_image_rate_differs_from_box_rate() -> None:
+    """框数与图数必须分开看：7 个框集中在一张图，和分散在 7 张图，含义完全不同。"""
+    concentrated = EvalResult(label="c", checkpoint="", score_threshold=0.5, iou_threshold=0.5,
+                              n_pred_bg=7, n_bg_images=10, n_bg_images_with_fp=1)
+    spread = EvalResult(label="s", checkpoint="", score_threshold=0.5, iou_threshold=0.5,
+                        n_pred_bg=7, n_bg_images=10, n_bg_images_with_fp=7)
+    assert concentrated.bg_fp_per_image == spread.bg_fp_per_image == pytest.approx(0.7)
+    assert concentrated.bg_fp_image_rate == pytest.approx(0.1)
+    assert spread.bg_fp_image_rate == pytest.approx(0.7)
 
 
 def test_eval_result_metrics_are_nan_not_crash_when_empty() -> None:

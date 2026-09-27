@@ -56,6 +56,11 @@ class EvalResult:
     n_pred_pos: int = 0
     #: **真背景图**上的预测框数 —— 这就是虚警
     n_pred_bg: int = 0
+    #: 至少产生 1 个虚警框的**背景图张数**。
+    #: 为什么单列：``n_pred_bg`` 是**框数**，7 个框可能全部集中在一张图上，
+    #: 那样"31 张背景图出了 7 个框"和"1 张图出了 7 个框"读起来完全不同，
+    #: 而只有图数才谈得上比例与统计意义。
+    n_bg_images_with_fp: int = 0
     n_matched: int = 0
     per_class_gt: dict[str, int] = field(default_factory=dict)
     per_class_hit: dict[str, int] = field(default_factory=dict)
@@ -71,6 +76,11 @@ class EvalResult:
     @property
     def bg_fp_per_image(self) -> float:
         return self.n_pred_bg / self.n_bg_images if self.n_bg_images else float("nan")
+
+    @property
+    def bg_fp_image_rate(self) -> float:
+        """有虚警的背景图占比 —— 比"每图多少个框"更适合用来比较两组。"""
+        return self.n_bg_images_with_fp / self.n_bg_images if self.n_bg_images else float("nan")
 
 
 @torch.no_grad()
@@ -116,6 +126,8 @@ def evaluate(
             if not sample.has_objects:
                 r.n_bg_images += 1
                 r.n_pred_bg += len(boxes)
+                if len(boxes):
+                    r.n_bg_images_with_fp += 1
                 continue
 
             r.n_pos_images += 1
@@ -148,7 +160,8 @@ def format_results_table(results: list[EvalResult], *, title: str = "") -> str:
         lines += [f"### {title}", ""]
 
     header = (
-        "| 模型 | 评测图 | 有目标图 | 背景图 | 标注框 | 命中 | 召回 | 精度 | 背景图虚警 | 虚警/图 |"
+        "| 模型 | 评测图 | 有目标图 | 背景图 | 标注框 | 命中 | 召回 | 精度 | "
+        "背景虚警 框/图 | 虚警图占比 |"
     )
     lines += [
         header,
@@ -157,8 +170,9 @@ def format_results_table(results: list[EvalResult], *, title: str = "") -> str:
     for r in results:
         lines.append(
             f"| {r.label} | {r.n_images} | {r.n_pos_images} | {r.n_bg_images} | {r.n_gt} | "
-            f"{r.n_matched} | {r.recall:.3f} | {r.precision:.3f} | {r.n_pred_bg} | "
-            f"{r.bg_fp_per_image:.2f} |"
+            f"{r.n_matched} | {r.recall:.3f} | {r.precision:.3f} | "
+            f"{r.n_pred_bg} 框 / {r.n_bg_images_with_fp} 图 | "
+            f"{r.bg_fp_image_rate * 100:.0f}% |"
         )
 
     classes = sorted({c for r in results for c in r.per_class_gt})
