@@ -113,6 +113,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="置信度阈值，可多个（默认只跑 0.5）")
     ap.add_argument("--iou", type=float, default=0.5, help="命中判定 IoU 阈值")
     ap.add_argument("--device", default=None)
+    ap.add_argument("--batch-size", type=int, default=4,
+                    help="分批前向的批大小（必须分批：整集一次前向会爆显存）")
     ap.add_argument("--limit", type=int, default=None, help="只评前 N 张（冒烟用，结果无意义）")
     args = ap.parse_args(argv)
 
@@ -189,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
                     model, samples, list(c["classes"]), device,
                     label=label, checkpoint=path,
                     score_threshold=thr, iou_threshold=args.iou,
+                    batch_size=args.batch_size,
                 ))
             print()
             print(format_results_table(results, title=f"置信度阈值 {thr}"))

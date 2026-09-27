@@ -84,49 +84,59 @@ def evaluate(
     checkpoint: str = "",
     score_threshold: float = 0.5,
     iou_threshold: float = 0.5,
+    batch_size: int = 4,
 ) -> EvalResult:
     """在给定样本集上评测一个模型。
 
     匹配规则：每张图内对标注框与预测框做**贪心一对一**匹配
     （每个标注框找当前 IoU 最大的未占用预测框，IoU ≥ 阈值为命中）。
     同一预测框不会被两个标注框重复计入。
-    """
-    dataset = DetectionDataset(samples, classes)
-    images = [dataset[i][0] for i in range(len(dataset))]
-    preds = predict(model, images, device, score_threshold=score_threshold)
 
+    :param batch_size: **必须分批前向**。torchvision 检测模型接受"一批图"作为
+        一个 list，若把整个评测集一次性丢进去，单次前向的输入张量就有数百 MB，
+        再加上 FPN 各层激活，8 GB 显存会被直接打爆（本项目实际踩过这个设计）。
+    """
+    if batch_size < 1:
+        raise ValueError(f"batch_size 必须 >= 1，实际 {batch_size}")
+
+    dataset = DetectionDataset(samples, classes)
     r = EvalResult(
         label=label, checkpoint=checkpoint,
         score_threshold=score_threshold, iou_threshold=iou_threshold,
         n_images=len(samples),
     )
 
-    for sample, pred in zip(samples, preds):
-        boxes = pred["boxes"]
-        if not sample.has_objects:
-            r.n_bg_images += 1
-            r.n_pred_bg += len(boxes)
-            continue
+    for start in range(0, len(samples), batch_size):
+        chunk = samples[start:start + batch_size]
+        images = [dataset[i][0] for i in range(start, start + len(chunk))]
+        preds = predict(model, images, device, score_threshold=score_threshold)
 
-        r.n_pos_images += 1
-        r.n_pred_pos += len(boxes)
-        used: set[int] = set()
-        for gt in sample.boxes:
-            r.n_gt += 1
-            r.per_class_gt[gt.label] = r.per_class_gt.get(gt.label, 0) + 1
+        for sample, pred in zip(chunk, preds):
+            boxes = pred["boxes"]
+            if not sample.has_objects:
+                r.n_bg_images += 1
+                r.n_pred_bg += len(boxes)
+                continue
 
-            best_iou, best_j = iou_threshold, -1
-            g = (gt.x1, gt.y1, gt.x2, gt.y2)
-            for j, pb in enumerate(boxes):
-                if j in used:
-                    continue
-                v = iou_xyxy(g, pb)
-                if v >= best_iou:
-                    best_iou, best_j = v, j
-            if best_j >= 0:
-                used.add(best_j)
-                r.n_matched += 1
-                r.per_class_hit[gt.label] = r.per_class_hit.get(gt.label, 0) + 1
+            r.n_pos_images += 1
+            r.n_pred_pos += len(boxes)
+            used: set[int] = set()
+            for gt in sample.boxes:
+                r.n_gt += 1
+                r.per_class_gt[gt.label] = r.per_class_gt.get(gt.label, 0) + 1
+
+                best_iou, best_j = iou_threshold, -1
+                g = (gt.x1, gt.y1, gt.x2, gt.y2)
+                for j, pb in enumerate(boxes):
+                    if j in used:
+                        continue
+                    v = iou_xyxy(g, pb)
+                    if v >= best_iou:
+                        best_iou, best_j = v, j
+                if best_j >= 0:
+                    used.add(best_j)
+                    r.n_matched += 1
+                    r.per_class_hit[gt.label] = r.per_class_hit.get(gt.label, 0) + 1
 
     return r
 
