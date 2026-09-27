@@ -9,8 +9,22 @@
 
 | 日期 | 产物 | 来源模型/配置 | 文件大小 | SHA256 |
 |---|---|---|---|---|
-| 2026-09-25 | `train_baseline_run1/best.pth` | FCOS-R50-FPN + COCO 预训练，3 类；`configs/train_baseline.yaml`（20 轮 / bs4 / lr0.005 / min_size600）| 128,799,730 B | `4576d830445f9671aca63624689f9685031c246908fe7d45779caa5a444d46b6` |
-| 2026-09-25 | `model.onnx` | 由上一行权重导出（D5）；opset 17 / IR 8 / 动态 H/W；规格见 `model.onnx.spec.json` | 128,586,408 B | `8a8f5b36fd9deb2bdc6fba6c6945b9e52ac73562fb5def8c82e4529a8386a58a` |
+| 2026-09-25 | `train_baseline_run1/best.pth` | FCOS-R50-FPN + COCO 预训练，3 类；`configs/train_baseline.yaml`（20 轮 / bs4 / lr0.005 / min_size600）；**`drop_emptied=true`** | 128,799,730 B | `4576d830445f9671aca63624689f9685031c246908fe7d45779caa5a444d46b6` |
+| 2026-09-26 | `train_baseline_ablation_fake_bg/best.pth` | ⚠️ **目录名有误导性：它实际是 `drop_emptied=true` 的run**（按每轮 34.6 s ≈ A 的 34.3 s 判定，非目录名）| 128,799,730 B | `3475ddd6c4e6505e583dd585bde5b2cd11d4efe99667a6b5d18822017a583f16` |
+| 2026-09-27 | `ablation_fake_bg/best.pth` | **`drop_emptied=false`**（按每轮 63.4 s ≈ 2× 判定，且 train loss 末值 0.5790 显著最低，梯度步数多 2.1 倍）| 128,799,730 B | `c363124506a39e88f20df90a77c0dfc8a15b9cd2cbdba94a3adf313e5b97be0c` |
+| 2026-09-27 | `train_baseline_repeat/best.pth` | `drop_emptied=true`（**权重内 `dataset_spec` 已自记录**，第一个自描述的产物）| 128,800,306 B | `a1c48206c7ce37a63b702e55a759eb03892131d53841c8698fc7b377c0a36974` |
+| 2026-09-25 | `model.onnx` | 由 `train_baseline_run1/best.pth` 导出（D5）；opset 17 / IR 8 / 动态 H/W；规格见 `model.onnx.spec.json` | 128,586,408 B | `8a8f5b36fd9deb2bdc6fba6c6945b9e52ac73562fb5def8c82e4529a8386a58a` |
+
+> 🛑 **上面第二行为什么要加那句警告**：`best.pth` 当时**没有记录 `dataset_spec`**，
+> 只能靠目录名判断它属于哪个实验条件——而**目录名是错的**。
+> 本项目的消融分析因此一度用错了权重、得出了反向结论（详见 `docs/decisions.md` 的重大更正）。
+>
+> **规则（从这次事故得出）**：
+> 1. **产物的身份必须由产物自身携带**（`dataset_spec`），不能由文件名/目录名承载；
+> 2. 无法自证的旧产物，**不要凭命名去推断**——用可测量的物理量（如每轮耗时）交叉验证，
+>    或者直接标注"归属不明"；
+> 3. **每产出一个产物立刻登记**。本次三个权重是在事后核查时才补登的，
+>    正是这段空窗让错误结论跑了出去。
 
 > **`run1` 为什么要单独归档**：训练**不是确定性的**（未固定随机种子、cuDNN 算法选择有随机性），
 > 重跑同一份配置**不会**得到同一个 SHA256。所以每次正式训练的产物单独归档一份，
