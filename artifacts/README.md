@@ -10,6 +10,7 @@
 | 日期 | 产物 | 来源模型/配置 | 文件大小 | SHA256 |
 |---|---|---|---|---|
 | 2026-09-25 | `train_baseline_run1/best.pth` | FCOS-R50-FPN + COCO 预训练，3 类；`configs/train_baseline.yaml`（20 轮 / bs4 / lr0.005 / min_size600）| 128,799,730 B | `4576d830445f9671aca63624689f9685031c246908fe7d45779caa5a444d46b6` |
+| 2026-09-25 | `model.onnx` | 由上一行权重导出（D5）；opset 17 / IR 8 / 动态 H/W；规格见 `model.onnx.spec.json` | 128,586,408 B | `8a8f5b36fd9deb2bdc6fba6c6945b9e52ac73562fb5def8c82e4529a8386a58a` |
 
 > **`run1` 为什么要单独归档**：训练**不是确定性的**（未固定随机种子、cuDNN 算法选择有随机性），
 > 重跑同一份配置**不会**得到同一个 SHA256。所以每次正式训练的产物单独归档一份，

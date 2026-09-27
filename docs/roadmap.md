@@ -17,9 +17,27 @@
 | **D1** | 仓库骨架、目录分层、runtime 适配层接口 | ✅ `git log`、目录树、本文件 |
 | **D2** | 数据集选型，搭最小可用数据集 | ✅ 两源接通（光学 NWPU VHR-10 3 类 + SAR SSDD）、`data/DATA_SOURCES.md`、`scripts/preview_data.py` 出图 |
 | **D3–D4** | 训练基线检测器 | ✅ 已完成（2026-09-25）：`docs/img/20260925_d3_baseline_loss_curve.png`、`..._predictions.png` |
-| **D5** | 导出 ONNX | `.onnx` 文件 + Netron 能看到计算图 |
+| **D5** | 导出 ONNX | ✅ 已完成（2026-09-25）：`artifacts/model.onnx`（128.6 MB，IR 8 / opset 17，1040 节点）+ `.spec.json`；onnx.checker 全检通过、ORT 可加载 |
 | **D6** | ONNX Runtime 推理，**逐框与 PyTorch 对齐** | 两侧框坐标差值表（差 >1e-2 即有问题） |
 | **D7** | 收口：README + 演示录屏 | 30 秒录屏 + 一页 README |
+
+> **D5 已完成（2026-09-25）**：`artifacts/model.onnx`（128.6 MB，IR 8 / opset 17，
+> 1040 节点 / 1492 边，17 种算子），规格见同名 `.spec.json`。
+> 通过 `onnx.checker.check_model(full_check=True)`；onnxruntime 1.23.2 可加载；
+> 动态 H/W 在 **64×64 ~ 600×800 全区间**与 PyTorch 一致（最大绝对差 **8.58e-06**）。
+> ⚠️ **两条必须一起说明的限定**（详见 `docs/decisions.md`）：
+> ① 图**只含 backbone+FPN+head，不含后处理**（anchor/解码/NMS 在图外）——
+> 它**不是**"喂图直接吐框"的成品，写成"检测模型已部署"即为不实陈述；
+> ② 用的是 legacy（`dynamo=False`）导出器，torch 已明确警告其**将被移除**，
+> 升级 torch 时第一件事就是重验导出。
+> 📌 上板待查算子：FCOS 的 GroupNorm 导出为 **`InstanceNormalization`（40 个）**，
+> 需确认昇腾 CANN 支持情况；不支持则换 RetinaNet（头是 Conv+ReLU）。
+>
+> 📎 **待补证据物（需人工操作）**：我在本机用程序完成了 D5 的全部机器可验项
+> （checker 全检、ORT 加载、跨尺寸数值一致），但 **Netron 截图必须人来截**。
+> 请执行 `netron artifacts\model.onnx`，截图存
+> `docs/img/20260925_d5_netron_graph.png`（终端截图要带命令行本身，
+> 见 `docs/img/README.md` 的截图纪律）。
 
 > **D3–D4 已完成（2026-09-25）**：基线 FCOS/ResNet50-FPN（COCO 预训练，32.1 M 参数），
 > 20 轮实测 11.4 分钟，train loss 2.7300 → **0.7311**、val loss 4.0773 → **0.6278**。

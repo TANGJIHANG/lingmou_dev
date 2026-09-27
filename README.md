@@ -25,7 +25,7 @@
 | D1 | 仓库骨架、目录分层、runtime 适配层接口 | ✅ 已完成 |
 | D2 | 数据集选型与最小可用数据集 | ✅ 已完成（2026-09-25） |
 | D3–D4 | 基线检测器训练 | ✅ 已完成（2026-09-25） |
-| D5 | 导出 ONNX | ☐ |
+| D5 | 导出 ONNX | ✅ 已完成（2026-09-25） |
 | D6 | ONNX Runtime 推理 + 与 PyTorch 精度对齐 | ☐ |
 | D7 | 竖线收口：README + 演示录屏 | ☐ |
 
@@ -82,6 +82,37 @@
 >    但整图相关性查不出"同机场不同裁剪"，且该任务本身不难，数字偏高属预期。
 >
 > 另：NWPU 无官方划分，本项目自定固定种子划分，**mAP 不能与文献数字直接比较**，只作内部对照。
+
+## 导出 ONNX（D5）
+
+```powershell
+.\.venv\Scripts\python.exe scripts\export_onnx.py
+```
+
+产物成对出现：`artifacts/model.onnx`（计算图）+ `artifacts/model.onnx.spec.json`（导出规格，
+**D6 必须用同一份**）。哈希登记在 [`artifacts/README.md`](artifacts/README.md)。
+
+| 项 | 实测 |
+|---|---|
+| 文件 | 128.6 MB，1040 节点 / 1492 条边，17 种算子 |
+| IR / opset | **IR 8** / opset 17（IR 显式压低，见下）|
+| 图合法性 | `onnx.checker.check_model(full_check=True)` **通过** |
+| onnxruntime 加载 | 1.23.2 可加载 |
+| 动态 H/W | **64×64 ~ 600×800 全区间**与 PyTorch 一致，最大绝对差 **8.58e-06** |
+
+看计算图：`netron artifacts\model.onnx`（或 https://netron.app）。
+
+> ⚠️ **三条必须一起说明的限定**（详见 [`docs/decisions.md`](docs/decisions.md)）：
+> 1. **图只含 backbone+FPN+head，不含后处理**（anchor / 解码 / NMS 都在图外）。
+>    它**不是**"喂图直接吐框"的成品——把它写成"检测模型已部署"就是不实陈述。
+>    这样切是为了 D6：两侧共用同一套后处理，差异才只可能来自模型本身。
+> 2. 用的是 legacy（`dynamo=False`）导出器——torch 已明确警告**将被移除**
+>    （本机默认的 dynamo 导出器需要 `onnxscript`，环境未装）。升级 torch 时须重验导出。
+> 3. **IR version 必须显式压低**：实测 onnx 1.23 默认写 IR 14，而 onnxruntime 1.23.2
+>    只支持到 11，直接报 `Unsupported model IR version`。
+>
+> 📌 **上板待查算子**：FCOS 的 GroupNorm 导出为 **`InstanceNormalization`（40 个）**，
+> 需确认昇腾 CANN 是否支持；不支持则换 RetinaNet（头是 Conv+ReLU，本仓库已支持切换）。
 
 ## 环境
 

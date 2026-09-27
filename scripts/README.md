@@ -10,8 +10,8 @@
 | 脚本 | 作用 | 状态 |
 |---|---|---|
 | `preview_data.py` | 数据集预览：统计 + 带框网格图（D2 验收证据）| ✅ D2 |
-| `train.py` | 训练检测器（读 `configs/train_*.yaml`） | ✅ 脚本就绪，待正式开跑 D3–D4 |
-| `export_onnx.py` | 导出 ONNX | ☐ D5 |
+| `train.py` | 训练检测器（读 `configs/train_*.yaml`） | ✅ D3–D4 完成 |
+| `export_onnx.py` | 导出 ONNX | ✅ D5 |
 | `eval.py` | 评测：精度、虚警率、时延 | ☐ D6+ |
 | `infer.py` | 单图/单流推理入口 | ☐ D6 |
 | `infer_bench.py` | 分段耗时打点（解码/预处理/推理/后处理） | ☐ D11 |
@@ -63,6 +63,32 @@
 其它可用覆盖参数：`--epochs` / `--batch-size` / `--device` / `--config` / `--datasets`。
 **训练不是确定性的**（未固定随机种子），重跑同一份配置不会得到同一个 SHA256——
 所以每次正式训练都单独归档，并在 `artifacts/README.md` **另起一行**登记新哈希。
+
+## 导出 ONNX（D5）
+
+```powershell
+# 从基线权重导出（默认读 configs/train_baseline.yaml 的检测器/类别/尺寸）
+.\.venv\Scripts\python.exe scripts\export_onnx.py
+
+# 指定权重与输出
+.\.venv\Scripts\python.exe scripts\export_onnx.py `
+    --checkpoint artifacts\train_baseline_run1\best.pth --output artifacts\model.onnx
+
+# 定尺寸图（默认是动态 H/W）
+.\.venv\Scripts\python.exe scripts\export_onnx.py --fixed-hw 600x800
+```
+
+产物两个，**必须成对使用**：
+
+| 文件 | 说明 |
+|---|---|
+| `model.onnx` | 计算图 |
+| `model.onnx.spec.json` | 导出规格（opset / IR / 动态轴 / 输入尺寸）——**D6 必须用同一份** |
+
+> ⚠️ **导出的图只含 backbone+FPN+head，不含后处理**（anchor/解码/NMS 都在图外）。
+> 它不是"喂图片直接吐框"的成品；逐框对齐属 D6。
+
+看计算图：装 `netron` 后 `netron artifacts\model.onnx`，或在 https://netron.app 打开。
 
 ## 数据准备类脚本
 

@@ -436,6 +436,103 @@
 
 ---
 
+## 2026-09-25 · D5 导出切面：只导出 backbone+FPN+head，后处理留在图外
+
+- **决定**：导出的 ``.onnx`` **只含模型前半段**，输出三个原始张量
+  （``cls_logits`` / ``bbox_regression`` / ``bbox_ctrness``）；
+  anchor 生成、解码、centerness、NMS **全部留在图外**。
+- **理由**：torchvision 检测模型的 ``forward`` 返回 ``List[Dict[str, Tensor]]``
+  ——每张图一个 dict，含 boxes/scores/labels。这是 **Python 对象**，
+  既有变长输出、又嵌着 NMS 这类自定义逻辑，**根本无法直接 trace 成计算图**。
+  切在模型与后处理之间是唯一可行的方案，而且带来一个决定性好处：
+
+  > D6 要求"逐框与 PyTorch 对齐"。两侧**共用同一套后处理代码**后，
+  > 差异就只可能来自模型图本身，而不是"NMS 在两边实现得不一样"这类噪声。
+  > **先排除后处理变量，再谈精度对齐。**
+
+- **⚠️ 代价（必须记账）**：产物**不是**"喂图片直接吐框"的成品。
+  谁要用它就得自己实现后处理；终态（真上板）必须把后处理也做进去，
+  或重写一份无 torch 依赖的实现——那是 D6/D7 的事。
+  报告里若把它写成"检测模型已部署"，就是**不实陈述**。
+- **备选与放弃原因**：
+  - **连后处理一起导出**：否决。torchvision 的 ``batched_nms`` 无法直接导出，
+    需引入 ``NonMaxSuppression`` 自定义算子或自写；且会把后处理差异混进 D6 的对齐结果里。
+  - **导出成 ``List[Dict]``**：不可行，ONNX 图不能有 Python 对象输出。
+
+---
+
+## 2026-09-25 · D5 导出规格：opset 17 / IR 8 / 动态 H/W
+
+- **决定**：``opset=17``、``ir_version=8``、**H/W 动态**；导出后强制压低 IR version。
+- **理由（带实测）**：
+  1. **IR 必须压**。``onnx`` 与 ``onnxruntime`` 独立发版、上限不同步：
+     实测 onnx 1.23 默认写 **IR 14**，而 onnxruntime 1.23.2 只支持到 **11**，
+     报 ``Unsupported model IR version``。压到 8 是为了能在**板子上可能更旧的**
+     onnxruntime 上加载。该步骤写在 ``export.py::_force_ir_version`` 里，
+     **每次导出都执行**，不靠"我记得手动改过"。
+  2. **动态 H/W 实测成立**。torchvision 的 transform 按**每张图的宽高比**决定缩放后的尺寸，
+     所以固定尺寸导出会逼我们改预处理，进而与训练时的预处理不一致。
+     实测动态轴在 **64×64 ~ 600×800 全区间**与 PyTorch 一致，误差约 **5e-06**：
+
+     | 输入 | 特征图最小边 | 与 PyTorch 最大绝对差 |
+     |---|---|---|
+     | 600×800 | 5 | 8.58e-06 |
+     | 448×640 | 4 | 6.68e-06 |
+     | 320×448 | 3 | 4.77e-06 |
+     | 192×256 | 2 | 5.25e-06 |
+     | 128×128 | 1 | 6.68e-06 |
+     | 64×64 | 1 | 4.77e-06 |
+
+     导出时有 ``TracerWarning``：FPN 的 ``interpolate`` 里 ``if size_prods == 1:``
+     被当作常量固化。上表说明**它在本任务的尺寸范围内无害**（即使特征图最小边降到 1），
+     但这条限制必须写下来，不能因为"这次没炸"就当它不存在。
+
+  3. **推理结果**：导出的图在 4 组尺寸上与 PyTorch 原始输出最大差 **8.58e-06**，
+     通过 ``onnx.checker.check_model(full_check=True)``（含形状推断），
+     onnxruntime 1.23.2 可加载。产物 128.6 MB、1040 节点 / 1492 条边、17 种算子。
+- **备选与放弃原因**：
+  - **固定尺寸导出**：否决。会改变预处理口径，D6 的对齐将失去意义。
+    保留 ``--fixed-hw`` 参数以备某些后端/工具链只吃定尺寸图。
+  - **追新 opset**：否决。板卡后端往往滞后，opset 17 已覆盖 FCOS 全部算子。
+  - **装 ``onnxscript`` 用新的 dynamo 导出器**：暂时否决，见下条。
+
+---
+
+## 2026-09-25 · D5 导出器：暂用 legacy（dynamo=False），并登记其废弃风险
+
+- **决定**：``torch.onnx.export(..., dynamo=False)``，**使用 TorchScript 老导出器**。
+- **理由（带实测）**：本机 torch 2.14 的 ``torch.onnx.export`` **默认 ``dynamo=True``**，
+  而它依赖 ``onnxscript``——**本环境未安装**，不显式传 ``dynamo=False`` 会直接失败。
+  老导出器无需额外依赖，且对 torchvision 检测模型久经验证。
+- **⚠️ 已登记的废弃风险**：导出时 torch 发出明确警告——
+  *"Starting in PyTorch 2.9, the new torch.export-based ONNX exporter has become the default."*
+  意味着这条路径**将来会被移除**。因此：
+  - 报告里不要写"这条导出链路长期稳定"；
+  - 一旦需要升级 torch，**第一件事就是重新验证导出**，而不是假定它照旧能用。
+  - 届时的迁移路径是装 ``onnxscript`` 并改用 dynamo 导出器，同时重跑本节全部尺寸验证。
+- **备选与放弃原因**：现在就地装 ``onnxscript`` 换 dynamo——否决，属无谓风险：
+  当前路径已通过全部验收，且换导出器要重跑所有验证。
+
+---
+
+## 2026-09-25 · D5 附带产出：FCOS 的 GroupNorm 具体导出成 InstanceNormalization
+
+- **决定**：把"D5 才可能发现的部署风险"落实为一条**具体可查的算子清单项**。
+- **理由**：D3 选型时只写了模糊的"FCOS 头用的 GroupNorm 在国产芯片上可能要查"。
+  D5 导出后实测：**GroupNorm 被导出为 ``InstanceNormalization``（40 个）配 ``Reshape``**，
+  并没有被融合掉。算子总清单为：
+
+  ``Constant 284 / Conv 116 / Reshape 110 / Relu 95 / Shape 76 / Identity 64 /
+  Unsqueeze 64 / Add 58 / InstanceNormalization 40 / Mul 40 / Concat 37 /
+  Gather 34 / Transpose 15 / Slice 2 / Cast 2 / Resize 2 / MaxPool 1``
+
+  → **上板前必须确认昇腾 CANN 是否支持 ``InstanceNormalization``**。
+  若不支持，退路是换 RetinaNet（头是 Conv+ReLU，无归一化层，本仓库已支持切换）。
+- **备选与放弃原因**：只在报告里写"需确认算子支持"——否决。
+  写不出**具体哪个算子**，这条风险就永远无法被关闭，也没法交给别人去查。
+
+---
+
 ## 模板（后续条目复制此段）
 
 ```markdown
